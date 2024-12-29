@@ -1,0 +1,7 @@
+/stock_backtest.egg-info/
+/log/
+/__pycache__/
+/__pytest_cache__/
+.idea
+
+

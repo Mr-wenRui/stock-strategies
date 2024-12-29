@@ -1,0 +1,36 @@
+clickhouse:
+  host: 60.205.123.183
+  port: 19000
+  user: default
+  password: ''
+  database: default
+
+clickhouse_pool:
+  max_connections: 10  # 最大连接数
+  min_cached: 2        # 初始连接数
+  max_cached: 5        # 最大空闲连接数
+  max_shared: 3        # 最大共享连接数
+  max_usage: 0         # 单个连接最大重复使用次数
+
+redis:
+  host: 60.205.123.183
+  port: 16379
+  password: ''
+  db: 0
+  socket_timeout: 30     # 增加套接字超时时间
+  connect_timeout: 10    # 增加连接超时时间
+
+redis_pool:
+  max_connections: 10    # 最大连接数
+  socket_timeout: 30     # 套接字超时（秒）
+  connect_timeout: 10    # 连接超时（秒）
+
+kafka:
+  host: 60.205.123.183  # Kafka 服务器地址
+  port: 9092            # Kafka 端口
+  security_protocol: "PLAINTEXT"  # 安全协议
+  version: "2.8.2"      # Kafka 版本，改为字符串格式
+  # 如果需要认证，添加以下配置
+  # username: "your_username"
+  # password: "your_password"
+  # sasl_mechanism: "PLAIN"
