@@ -4,6 +4,7 @@ import yaml
 from pathlib import Path
 from typing import Optional
 from utils.uitl import get_root_path
+import traceback
 
 
 class Logger:
@@ -29,7 +30,7 @@ class Logger:
             'disable_existing_loggers': False,
             'formatters': {
                 'standard': {
-                    'format': '%(asctime)s [%(levelname)s] %(pathname)s:%(lineno)d:%(funcName)s - %(message)s',
+                    'format': '%(asctime)s [%(levelname)s] %(pathname)s:%(lineno)d:%(funcName)s - %(message)s\n%(exc_info)s',
                     'datefmt': '%Y-%m-%d %H:%M:%S'
                 }
             },
@@ -63,7 +64,7 @@ class Logger:
         """初始化日志配置"""
         try:
             # 确保logs目录存在
-            Path('logs').mkdir(exist_ok=True)
+            Path(get_root_path(), 'logs').mkdir(exist_ok=True)
             
             # 加载配置
             config = None
@@ -88,4 +89,16 @@ class Logger:
     def get_logger(name: Optional[str] = None) -> logging.Logger:
         """获取日志记录器"""
         Logger()  # 确保已初始化
-        return logging.getLogger(name)
+        logger = logging.getLogger(name)
+        
+        # 重写error方法以包含堆栈跟踪
+        original_error = logger.error
+        def error_with_stack(msg, *args, **kwargs):
+            if not kwargs.get('exc_info'):
+                stack_trace = traceback.format_exc()
+                if stack_trace != "NoneType: None\n":  # 有实际的堆栈信息
+                    msg = f"{msg}\nStack trace:\n{stack_trace}"
+            original_error(msg, *args, **kwargs)
+            
+        logger.error = error_with_stack
+        return logger

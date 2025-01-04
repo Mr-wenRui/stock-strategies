@@ -11,14 +11,18 @@ clickhouse_pool:
   max_cached: 5        # 最大空闲连接数
   max_shared: 3        # 最大共享连接数
   max_usage: 0         # 单个连接最大重复使用次数
+  socket_timeout: 30   # 套接字超时（秒）
+  connect_timeout: 10  # 连接超时（秒）
 
 redis:
   host: 60.205.123.183
   port: 16379
-  password: ''
   db: 0
-  socket_timeout: 30     # 增加套接字超时时间
-  connect_timeout: 10    # 增加连接超时时间
+  password: null
+  socket_timeout: 5
+  socket_connect_timeout: 5
+  health_check_interval: 30
+  max_connections: 100
 
 redis_pool:
   max_connections: 10    # 最大连接数
@@ -34,3 +38,4 @@ kafka:
   # username: "your_username"
   # password: "your_password"
   # sasl_mechanism: "PLAIN"
+

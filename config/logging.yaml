@@ -24,6 +24,6 @@ handlers:
 
 loggers:
   '':  # root logger
-    level: DEBUG
+    level: INFO
     handlers: [console, file]
     propagate: true 

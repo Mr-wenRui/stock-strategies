@@ -7,11 +7,10 @@ from utils.logger import Logger
 from pathlib import Path
 from dbutils.pooled_db import PooledDB
 from functools import wraps
-
-
-from utils.context import context
+from utils.config import Config
 
 logger = Logger.get_logger(__name__)
+
 
 class ClickHouseClient:
     """
@@ -19,7 +18,7 @@ class ClickHouseClient:
     提供数据库连接管理和基本的增删改查操作
     使用连接池管理数据库连接
     """
-    
+
     # 连接池实例
     _pool = None
 
@@ -29,9 +28,9 @@ class ClickHouseClient:
         if cls._pool is None:
             try:
                 # 获取ClickHouse配置
-                ch_config = context.clickhouse_config
-                pool_config = context.get_config('clickhouse_pool', {})
-                
+                ch_config = Config.get_config('clickhouse')
+                pool_config = Config.get_config('clickhouse_pool')
+
                 # 创建连接池
                 cls._pool = PooledDB(
                     creator=connect,  # 使用 clickhouse_driver.connect
@@ -63,6 +62,7 @@ class ClickHouseClient:
     @staticmethod
     def with_connection(func):
         """连接池管理装饰器"""
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             conn = None
@@ -72,6 +72,7 @@ class ClickHouseClient:
             finally:
                 if conn:
                     conn.close()
+
         return wrapper
 
     @staticmethod
@@ -113,20 +114,20 @@ class ClickHouseClient:
             if df.empty:
                 logger.warning("DataFrame为空，跳过插入")
                 return
-                
+
             # 构建INSERT语句
             columns = ', '.join(df.columns)
             query = f"INSERT INTO {table} ({columns}) VALUES"
-            
+
             # 直接使用DataFrame的values转换为列表
             data = df.values.tolist()
-            
+
             # 执行插入
             cursor = conn.cursor()
             cursor.executemany(query, data)
-            
+
             logger.info(f"成功插入 {len(df)} 条数据到表 {table}")
-            
+
         except Exception as e:
             logger.error(f"插入数据到表 {table} 失败: {str(e)}")
             raise
@@ -139,7 +140,7 @@ class ClickHouseClient:
         for i in range(0, total_rows, batch_size):
             batch_df = df.iloc[i:i + batch_size]
             ClickHouseClient.insert_df(conn, table, batch_df)
-            logger.info(f"已插入第 {i//batch_size + 1} 批数据，进度: {min(i + batch_size, total_rows)}/{total_rows}")
+            logger.info(f"已插入第 {i // batch_size + 1} 批数据，进度: {min(i + batch_size, total_rows)}/{total_rows}")
 
     @staticmethod
     @with_connection
@@ -179,55 +180,24 @@ class ClickHouseClient:
         try:
             conn = ClickHouseClient.get_connection()
             cursor = conn.cursor()
-            
+
             # 获取系统信息
             cursor.execute("SELECT version()")
             version = cursor.fetchone()[0]
-            
-            # 获取数据库大小
-            cursor.execute("""
-                SELECT formatReadableSize(sum(bytes)) as size
-                FROM system.parts
-            """)
-            db_size = cursor.fetchone()[0]
-            
+
             # 获取服务器运行时间
             cursor.execute("SELECT uptime()")
             uptime = cursor.fetchone()[0]
-            
-            # 获取表信息
-            cursor.execute("""
-                SELECT 
-                    table,
-                    formatReadableSize(sum(bytes)) as size,
-                    sum(rows) as total_rows,
-                    max(modification_time) as last_modified
-                FROM system.parts
-                GROUP BY table
-            """)
-            tables_info = [
-                {
-                    'name': row[0],
-                    'size': row[1],
-                    'total_rows': row[2],
-                    'last_modified': row[3]
-                }
-                for row in cursor.fetchall()
-            ]
-            
-            # 获取总表数
-            cursor.execute("SELECT count() FROM system.tables")
-            total_tables = cursor.fetchone()[0]
+
+            # 当前使用的数据库
+            cursor.execute("SELECT currentDatabase()")
+            current_database = cursor.fetchone()[0]
 
             return {
                 'status': 'healthy',
                 'connection': True,
                 'version': version,
-                'total_tables': total_tables,
-                'database_size': db_size,
-                'uptime_seconds': uptime,
-                'tables_info': tables_info,
-                'stock_tables': [t for t in tables_info if t['name'].startswith('stock_')]
+                'database': current_database
             }
         except Exception as e:
             logger.error(f"ClickHouse健康检查失败: {str(e)}")

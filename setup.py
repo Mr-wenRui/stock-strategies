@@ -9,5 +9,6 @@ setup(
         'pandas',
         'numpy',
         'matplotlib',
+        'redis>=4.0.0',
     ],
 )
