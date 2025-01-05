@@ -1,126 +1,83 @@
-from typing import Dict, Type, List
-from functools import wraps
-from .base_analyzer import BaseAnalyzer
+from typing import Dict, Type, List, Any
+import backtrader as bt
+from utils.logger import Logger
+
+logger = Logger.get_logger(__name__)
 
 class AnalyzerRegistry:
-    """
-    分析器注册表
-    用于管理和组织所有分析器，实现分析器的注册、启用/禁用等功能
-    """
+    """分析器注册表"""
     
-    # 存储所有已注册的分析器信息
-    # 格式: {
-    #   'analyzer_name': {
-    #       'class': 分析器类,
-    #       'enabled': 是否启用,
-    #       'order': 执行顺序,
-    #       'description': 分析器描述
-    #   }
-    # }
-    _analyzers: Dict[str, Dict] = {}
+    # 已注册的分析器
+    _analyzers: Dict[str, Dict[str, Any]] = {}
     
-    # 保存分析器的执行顺序，按order排序
-    _order: List[str] = []
+    # 已启用的分析器
+    _enabled_analyzers: Dict[str, Dict[str, Any]] = {}
     
     @classmethod
-    def register(cls, name: str, order: int = None, enabled: bool = True, description: str = None):
+    def register(cls, name: str, order: int = 100, enabled: bool = True, 
+                description: str = ''):
         """
-        分析器注册装饰器
-        用于注册新的分析器类，并设置其基本属性
-        
-        参数:
-            name: 分析器唯一标识名
-            order: 执行顺序（数字越小越先执行），默认为999
-            enabled: 是否默认启用，默认为True
-            description: 分析器描述，默认使用类文档字符串
-        
-        使用示例:
-            @AnalyzerRegistry.register(
-                name='my_analyzer',
-                order=50,
-                enabled=True,
-                description='我的自定义分析器'
-            )
-            class MyAnalyzer(BaseAnalyzer):
-                pass
+        注册分析器装饰器
         """
-        def decorator(analyzer_class: Type[BaseAnalyzer]):
-            # 保存分析器信息
+        def decorator(analyzer_class):
+            # 创建分析器实例
+            analyzer_instance = analyzer_class()
             cls._analyzers[name] = {
-                'class': analyzer_class,
+                'instance': analyzer_instance,
+                'order': order,
                 'enabled': enabled,
-                'order': order or 999,
-                'description': description or analyzer_class.__doc__,
-                'instance': analyzer_class()  # 创建实例并保存
+                'description': description
             }
-            
-            # 根据order值更新执行顺序列表
-            if name not in cls._order:
-                # 按order排序插入到正确位置
-                for i, existing_name in enumerate(cls._order):
-                    if order < cls._analyzers[existing_name]['order']:
-                        cls._order.insert(i, name)
-                        break
-                else:
-                    cls._order.append(name)
-            
+            if enabled:
+                cls._enabled_analyzers[name] = cls._analyzers[name]
             return analyzer_class
         return decorator
     
     @classmethod
     def enable(cls, name: str):
-        """
-        启用指定的分析器
-        
-        参数:
-            name: 分析器名称
-        """
+        """启用分析器"""
         if name in cls._analyzers:
-            cls._analyzers[name]['enabled'] = True
+            cls._enabled_analyzers[name] = cls._analyzers[name]
         else:
-            raise ValueError(f"未找到名为 '{name}' 的分析器")
+            logger.warning(f"未找到分析器: {name}")
     
     @classmethod
     def disable(cls, name: str):
-        """
-        禁用指定的分析器
-        
-        参数:
-            name: 分析器名称
-        """
-        if name in cls._analyzers:
-            cls._analyzers[name]['enabled'] = False
-        else:
-            raise ValueError(f"未找到名为 '{name}' 的分析器")
+        """禁用分析器"""
+        cls._enabled_analyzers.pop(name, None)
     
     @classmethod
-    def get_analyzer_chain(cls) -> BaseAnalyzer:
-        """
-        创建并返回分析器责任链
+    def get_enabled_analyzers(cls) -> Dict[str, Dict[str, Any]]:
+        """获取已启用的分析器"""
+        return dict(sorted(
+            cls._enabled_analyzers.items(),
+            key=lambda x: x[1]['order']
+        ))
+    
+    @classmethod
+    def reset(cls):
+        """重置分析器状态"""
+        cls._enabled_analyzers = {
+            name: info for name, info in cls._analyzers.items()
+            if info['enabled']
+        } 
+    
+    @classmethod
+    def setup_analyzers(cls, analyzers: Dict[str, bool] = None) -> Dict[str, bool]:
+        """配置分析器"""
+        if analyzers is None:
+            analyzers = {
+                name: True for name in cls._analyzers.keys()
+            }
         
-        返回:
-            责任链的头部分析器
-            
-        异常:
-            ValueError: 当没有可用的分析器时抛出
-        """
-        # 获取所有已启用的分析器
-        enabled_analyzers = [
-            name for name in cls._order
-            if name in cls._analyzers and cls._analyzers[name]['enabled']
-        ]
+        # 重置分析器状态
+        cls.reset()
         
-        if not enabled_analyzers:
-            raise ValueError("没有找到任何可用的分析器，请先注册一些分析器")
+        # 更新分析器状态
+        for name, enabled in analyzers.items():
+            if enabled:
+                cls.enable(name)
+            else:
+                cls.disable(name)
         
-        # 使用已存在的实例创建责任链
-        head = cls._analyzers[enabled_analyzers[0]]['instance']
-        current = head
-        
-        # 按顺序连接所有启用的分析器
-        for name in enabled_analyzers[1:]:
-            analyzer = cls._analyzers[name]['instance']
-            current.set_next(analyzer)
-            current = analyzer
-        
-        return head 
+        return analyzers 

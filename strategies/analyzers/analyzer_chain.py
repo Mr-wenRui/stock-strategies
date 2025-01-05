@@ -1,61 +1,90 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 import backtrader as bt
-from .registry import AnalyzerRegistry
-from .base_analyzer import BaseAnalyzer
-from . import (
-    # 基础分析器
-    SharpeAnalyzer,
-    DrawdownAnalyzer,
-    TradeAnalyzer,
-    # 高级分析器
-    ReturnsAnalyzer,
-    RiskAnalyzer,
-    TradeStatsAnalyzer,
-    PositionAnalyzer
-)
+from strategies.analyzers.registry import AnalyzerRegistry
+from utils.logger import Logger
+
+logger = Logger.get_logger(__name__)
 
 class AnalyzerChainBuilder:
-    """
-    分析器链构建器
-    负责创建和管理分析器责任链，提供分析器链的构建和使用接口
-    """
+    """分析器链构建器"""
     
-    @staticmethod
-    def create_default_chain() -> BaseAnalyzer:
-        """
-        创建默认的分析器链
-        直接使用已注册的分析器创建责任链
+    @classmethod
+    def add_analyzers(cls, cerebro: bt.Cerebro) -> None:
+        """添加分析器到回测引擎"""
+        enabled_analyzers = AnalyzerRegistry.get_enabled_analyzers()
         
-        返回:
-            分析器责任链的头部分析器
-        """
-        return AnalyzerRegistry.get_analyzer_chain()
+        for name, info in enabled_analyzers.items():
+            try:
+                analyzer = info['instance']
+                analyzer.add_to_cerebro(cerebro)
+                logger.debug(f"添加分析器: {name}")
+            except Exception as e:
+                logger.error(f"添加分析器 {name} 失败: {str(e)}")
     
-    @staticmethod
-    def add_analyzers(cerebro: bt.Cerebro):
-        """
-        将分析器添加到回测引擎
+    @classmethod
+    def setup_analyzers(cls, analyzers: Dict[str, bool] = None) -> Dict[str, bool]:
+        """配置分析器"""
+        if analyzers is None:
+            analyzers = {
+                name: True for name in AnalyzerRegistry._analyzers.keys()
+            }
         
-        参数:
-            cerebro: Backtrader的cerebro对象
+        # 重置分析器状态
+        AnalyzerRegistry.reset()
+        
+        # 更新分析器状态
+        for name, enabled in analyzers.items():
+            if enabled:
+                AnalyzerRegistry.enable(name)
+            else:
+                AnalyzerRegistry.disable(name)
+        
+        return analyzers
+    
+    @classmethod
+    def get_analysis_results(cls, strategy: bt.Strategy, analyzers) -> Dict[str, Any]:
+        """获取分析结果"""
+        try:
+            results = {}
             
-        返回:
-            分析器链对象，用于后续获取分析结果
-        """
-        analyzer_chain = AnalyzerChainBuilder.create_default_chain()
-        analyzer_chain.add_to_cerebro(cerebro)
-        return analyzer_chain
-    
-    @staticmethod
-    def get_analysis_results(strategy, analyzer_chain: BaseAnalyzer) -> Dict[str, Any]:
-        """
-        获取所有分析器的分析结果
-        
-        参数:
-            strategy: 策略对象
-            analyzer_chain: 分析器链对象
+            # 处理 ItemCollection 类型的分析器集合
+            if hasattr(analyzers, '_items'):  # backtrader 的 ItemCollection
+                items = analyzers._items
+            elif hasattr(analyzers, '__iter__'):  # 可迭代对象
+                items = analyzers
+            else:
+                items = []
             
-        返回:
-            包含所有分析结果的字典
-        """
-        return analyzer_chain.get_analysis_results(strategy) 
+            # 遍历分析器
+            for analyzer in items:
+                try:
+                    # 获取分析器名称
+                    name = analyzer.__class__.__name__.lower()
+                    if hasattr(analyzer, '_name'):
+                        name = analyzer._name
+                    
+                    # 获取分析结果
+                    analysis = analyzer.get_analysis()
+                    
+                    # 处理不同类型的结果
+                    if isinstance(analysis, dict):
+                        results[name] = analysis
+                    elif hasattr(analysis, '_asdict'):  # namedtuple
+                        results[name] = analysis._asdict()
+                    elif hasattr(analysis, '__dict__'):  # 对象
+                        results[name] = analysis.__dict__
+                    else:
+                        # 其他类型直接存储
+                        results[name] = analysis
+                        
+                    logger.debug(f"成功获取分析器 {name} 的结果")
+                    
+                except Exception as e:
+                    logger.error(f"获取分析器结果失败: {str(e)}")
+                    continue
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"获取分析结果失败: {str(e)}")
+            return {} 
