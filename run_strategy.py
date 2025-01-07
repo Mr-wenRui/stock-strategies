@@ -1,7 +1,14 @@
 from strategies.example_strategy import ExampleStrategy
+from utils.log_config import LogConfig
 
 def main():
     """运行回测"""
+    # 设置日志配置
+    LogConfig.setup_logging(
+        log_level='INFO',  # 可以从配置文件或环境变量获取
+        log_dir='logs'     # 可以从配置文件或环境变量获取
+    )
+    
     # 设置回测参数
     params = {
         'fast_period': 10,
