@@ -1,7 +1,7 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 import backtrader as bt
-from strategies.analyzers.registry import AnalyzerRegistry
 from utils.logger import Logger
+from .registry import AnalyzerRegistry
 
 logger = Logger.get_logger(__name__)
 
@@ -15,8 +15,8 @@ class AnalyzerChainBuilder:
         
         for name, info in enabled_analyzers.items():
             try:
-                analyzer = info['instance']
-                analyzer.add_to_cerebro(cerebro)
+                analyzer_class = info['class']
+                cerebro.addanalyzer(analyzer_class, _name=name)
                 logger.debug(f"添加分析器: {name}")
             except Exception as e:
                 logger.error(f"添加分析器 {name} 失败: {str(e)}")
@@ -28,9 +28,6 @@ class AnalyzerChainBuilder:
             analyzers = {
                 name: True for name in AnalyzerRegistry._analyzers.keys()
             }
-        
-        # 重置分析器状态
-        AnalyzerRegistry.reset()
         
         # 更新分析器状态
         for name, enabled in analyzers.items():

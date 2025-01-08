@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from typing import Dict, List, Optional, Any, Union, Type
 
 from utils.logger import Logger
+from utils.event_bus import EventBus
 
 from .analyzers.analyzer_chain import AnalyzerChainBuilder
 from .analyzers.registry import AnalyzerRegistry
@@ -12,12 +13,10 @@ from .observers.observer_builder import ObserverBuilder
 
 from .data_loader.default_loader import DefaultDataLoader
 from .data_loader.base_loader import BaseDataLoader
-from .output.output_manager import OutputManager
-from .notifications.notification_manager import NotificationManager
-from .notifications.record_manager import RecordManager
-from .output.console_observer import ConsoleObserver
 from .output.result_collector import ResultCollector
-from .observers.base_observer import BaseObserver
+from .output.handlers.console_handler import ConsoleHandler
+from .output.handlers.detail_handler import DetailHandler
+from .output.handlers.trade_handler import TradeHandler
 
 logger = Logger.get_logger(__name__)
 
@@ -86,12 +85,6 @@ class BaseStrategy(bt.Strategy):
         # 设置交易成本
         self._setup_trading_costs()
         
-        # 设置通知管理器
-        NotificationManager.set_strategy(self)
-        
-        # 添加输出观察者
-        OutputManager.add_observer(ConsoleObserver())
-        
         logger.debug("策略初始化完成")
 
     def _setup_trading_costs(self):
@@ -111,11 +104,24 @@ class BaseStrategy(bt.Strategy):
 
     def notify_order(self, order):
         """订单状态更新通知"""
-        NotificationManager.notify_order(order)
+        event_bus = EventBus.get_instance()
+        event_bus.publish('order', {
+            'ref': order.ref,
+            'status': order.getstatusname(),
+            'type': 'Buy' if order.isbuy() else 'Sell',
+            'size': order.created.size,
+            'price': order.created.price
+        })
 
     def notify_trade(self, trade):
         """交易完成通知"""
-        NotificationManager.notify_trade(trade)
+        if trade.isclosed:
+            event_bus = EventBus.get_instance()
+            event_bus.publish('trade', {
+                'status': 'Closed',
+                'pnl': trade.pnl,
+                'pnlcomm': trade.pnlcomm
+            })
 
     def get_position_size(self, code: str) -> int:
         """获取指定股票的持仓数量"""
@@ -192,11 +198,18 @@ class BaseStrategy(bt.Strategy):
                     analyzers: Dict[str, bool] = None, 
                     observers: Dict[str, bool] = None,
                     data_loader: BaseDataLoader = None,
+                    debug: bool = False,
                     **kwargs) -> Dict[str, Any]:
         """运行回测"""
         try:
-            # 重置记录管理器
-            RecordManager.get_instance().reset()
+            # 获取事件总线
+            event_bus = EventBus.get_instance()
+            
+            # 创建处理器
+            console_handler = ConsoleHandler()  # 控制台输出
+            trade_handler = TradeHandler()     # 交易事件处理
+            if debug:
+                detail_handler = DetailHandler()  # 调试模式下添加详细日志
             
             # 创建回测引擎
             cerebro = bt.Cerebro()
@@ -206,7 +219,7 @@ class BaseStrategy(bt.Strategy):
             cerebro.tradehistory = True
             
             # 3. 配置分析器和观察者
-            AnalyzerRegistry.setup_analyzers(analyzers)
+            analyzers = AnalyzerChainBuilder.setup_analyzers(analyzers)
             AnalyzerChainBuilder.add_analyzers(cerebro)
             
             # 设置观察者
@@ -278,9 +291,6 @@ class BaseStrategy(bt.Strategy):
                     init_cash=init_cash
                 )
                 
-                # 输出结果
-                OutputManager.output_results(final_results)
-                
                 return final_results
             
             return {
@@ -298,58 +308,14 @@ class BaseStrategy(bt.Strategy):
 
     def notify_cashvalue(self, cash, value):
         """现金变动通知"""
-        logger.info(f"现金变动: 当前现金={cash:,.2f}, 总资产={value:,.2f}")
-        NotificationManager.notify_cash(cash)
+        event_bus = EventBus.get_instance()
+        event_bus.publish('cash', {
+            'cash': cash,
+            'value': value
+        })
 
     def notify_store(self, msg, *args, **kwargs):
         """数据源通知"""
-        logger.info(f"数据源通知: {msg}")
-        NotificationManager.notify_store(msg)
-
-    def get_observer_data(self, observer_type: Type[BaseObserver], line_name: str) -> List[float]:
-        """获取观察者数据"""
-        try:
-            # 查找指定类型的观察者
-            observer = [obs for obs in self.observers if isinstance(obs, observer_type)]
-            if not observer:
-                return []
-            
-            # 获取观察者数据
-            observer_data = observer[0].get_series()
-            return observer_data.get(line_name, [])
-            
-        except Exception as e:
-            logger.error(f"获取观察者数据失败: {str(e)}")
-            return []
-
-    def get_latest_observer_value(self, observer_type: Type[BaseObserver], line_name: str) -> float:
-        """获取观察者最新值"""
-        try:
-            # 查找指定类型的观察者
-            observer = [obs for obs in self.observers if isinstance(obs, observer_type)]
-            if not observer:
-                return 0.0
-            
-            # 获取最新值
-            last_values = observer[0].get_last_values()
-            return last_values.get(line_name, 0.0)
-            
-        except Exception as e:
-            logger.error(f"获取观察者最新值失败: {str(e)}")
-            return 0.0
-
-    def get_observer_analysis(self, observer_type: Type[BaseObserver]) -> Dict[str, Any]:
-        """获取观察者分析结果"""
-        try:
-            # 查找指定类型的观察者
-            observer = [obs for obs in self.observers if isinstance(obs, observer_type)]
-            if not observer:
-                return {}
-            
-            # 获取分析结果
-            return observer[0].get_analysis()
-            
-        except Exception as e:
-            logger.error(f"获取观察者分析结果失败: {str(e)}")
-            return {}
+        event_bus = EventBus.get_instance()
+        event_bus.publish('store', msg)
 

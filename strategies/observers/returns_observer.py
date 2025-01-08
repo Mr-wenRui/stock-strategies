@@ -14,16 +14,18 @@ class ReturnsObserver(BaseObserver):
     lines = ('returns',)
     plotinfo = dict(plot=True, subplot=True, plotname='收益率 %')
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.initial_value = self._owner.broker.startingcash
-
+    def __init__(self):
+        super().__init__()
+        self.initial_value = None
+    
     def next(self):
         """计算并更新收益率"""
         try:
-            # current_value = self._owner.broker.getvalue()
-            # initial_value = self._owner.broker.startingcash
             current_value = self._owner.broker.getvalue()
+            
+            # 初始化初始值
+            if self.initial_value is None:
+                self.initial_value = current_value
             
             # 计算收益率（百分比）
             returns = ((current_value / self.initial_value) - 1) * 100
@@ -40,11 +42,11 @@ class ReturnsObserver(BaseObserver):
             'current': {
                 'returns': self.format_percentage(last_values.get('returns', 0))
             },
-            'series': self.get_series()
+            'series': self.get_all_series()
         }
     
     def print_analysis(self) -> None:
         """打印分析结果"""
         last_values = self.get_last_values()
-        logger.info("\n收益率分析:")
+        logger.info("收益率分析:")
         logger.info(f"当前收益率: {self.format_percentage(last_values.get('returns', 0))}") 

@@ -1,11 +1,15 @@
-from typing import Dict, Any, Type
+from typing import Dict, Any, Type, List
 import backtrader as bt
 from .base_strategy import BaseStrategy
 from utils.logger import Logger
 from .observers.base_observer import BaseObserver
-from .observers.custom_observers import (
+from .observers.returns_observer import (
     ReturnsObserver
 )
+from .observers.volatility_observer import VolatilityObserver
+from .observers.drawdown_observer import DrawdownObserver
+from .observers.win_rate_observer import WinRateObserver
+from .observers.profit_factor_observer import ProfitFactorObserver
 
 logger = Logger.get_logger(__name__)
 
@@ -54,14 +58,29 @@ class ExampleStrategy(BaseStrategy):
     def get_latest_metrics(self) -> Dict[str, float]:
         """获取最新指标"""
         try:
-            def get_latest(observer_type: Type[BaseObserver], line_name: str) -> float:
-                return self.get_latest_observer_value(observer_type, line_name)
-            
             return {
-                'returns': get_latest(ReturnsObserver, 'returns')
+                'returns': ReturnsObserver.get_latest_value(self, 'returns'),
+                'volatility': VolatilityObserver.get_latest_value(self, 'volatility'),
+                'drawdown': DrawdownObserver.get_latest_value(self, 'drawdown'),
+                'win_rate': WinRateObserver.get_latest_value(self, 'win_rate'),
+                'profit_factor': ProfitFactorObserver.get_latest_value(self, 'profit_factor')
             }
         except Exception as e:
             logger.error(f"获取指标失败: {str(e)}")
+            return {}
+    
+    def get_metrics_series(self) -> Dict[str, List[float]]:
+        """获取指标序列"""
+        try:
+            return {
+                'returns': ReturnsObserver.get_series(self, 'returns'),
+                'volatility': VolatilityObserver.get_series(self, 'volatility'),
+                'drawdown': DrawdownObserver.get_series(self, 'drawdown'),
+                'win_rate': WinRateObserver.get_series(self, 'win_rate'),
+                'profit_factor': ProfitFactorObserver.get_series(self, 'profit_factor')
+            }
+        except Exception as e:
+            logger.error(f"获取指标序列失败: {str(e)}")
             return {}
     
     def get_metrics_analysis(self) -> Dict[str, Any]:
