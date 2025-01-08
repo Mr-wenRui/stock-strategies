@@ -14,7 +14,7 @@ from .observers.observer_builder import ObserverBuilder
 from .data_loader.default_loader import DefaultDataLoader
 from .data_loader.base_loader import BaseDataLoader
 from .output.result_collector import ResultCollector
-from .output.handlers.console_handler import ConsoleHandler
+from .output.handlers.overview_handler import ConsoleHandler
 from .output.handlers.detail_handler import DetailHandler
 from .output.handlers.trade_handler import TradeHandler
 
@@ -110,18 +110,45 @@ class BaseStrategy(bt.Strategy):
             'status': order.getstatusname(),
             'type': 'Buy' if order.isbuy() else 'Sell',
             'size': order.created.size,
-            'price': order.created.price
+            'price': order.created.price,
+            'code': self.data.params.name
         })
 
     def notify_trade(self, trade):
         """交易完成通知"""
-        if trade.isclosed:
-            event_bus = EventBus.get_instance()
-            event_bus.publish('trade', {
-                'status': 'Closed',
-                'pnl': trade.pnl,
-                'pnlcomm': trade.pnlcomm
-            })
+        try:
+            if trade.isclosed:
+                # 获取股票代码
+                code = trade.data._name
+                
+                # 获取交易时间
+                dt = bt.num2date(trade.dtclose)
+                
+                event_bus = EventBus.get_instance()
+                event_bus.publish('trade', {
+                    'status': 'Closed',
+                    'code': code,  # 添加股票代码
+                    'time': dt.strftime('%Y-%m-%d %H:%M:%S'),  # 添加交易时间
+                    'pnl': trade.pnl,  # 毛利润
+                    'pnlcomm': trade.pnlcomm,  # 净利润
+                    'commission': trade.commission,  # 手续费
+                    'price': trade.price,  # 成交价格
+                    'size': trade.size,  # 成交数量
+                    'value': trade.value,  # 交易金额
+                    'cost': abs(trade.value),  # 交易成本
+                    'sid': trade.ref  # 交易编号
+                })
+                
+                # 记录交易信息
+                self.log(
+                    f"交易完成: {code}, "
+                    f"毛利润: {trade.pnl:.2f}, "
+                    f"净利润: {trade.pnlcomm:.2f}, "
+                    f"手续费: {trade.commission:.2f}"
+                )
+                
+        except Exception as e:
+            logger.error(f"处理交易通知失败: {str(e)}")
 
     def get_position_size(self, code: str) -> int:
         """获取指定股票的持仓数量"""
@@ -224,10 +251,6 @@ class BaseStrategy(bt.Strategy):
             
             # 设置观察者
             observers = ObserverBuilder.setup_observers(cerebro, observers)
-            # 添加默认的 Backtrader 观察者
-            cerebro.addobserver(bt.observers.Broker)
-            cerebro.addobserver(bt.observers.Trades)
-            cerebro.addobserver(bt.observers.BuySell)
             
             # 4. 加载数据
             data_loader = data_loader or DefaultDataLoader()
@@ -238,7 +261,7 @@ class BaseStrategy(bt.Strategy):
             cerebro.addstrategy(cls, **kwargs)
             
             # 6. 运行回测
-            results = cerebro.run()
+            results = cerebro.run(tradehistory=True)
             
             # 7. 绘制结果
             if plot:

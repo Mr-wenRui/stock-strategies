@@ -41,7 +41,7 @@ class AnalyzerRegistry:
         """启用分析器"""
         if name in cls._analyzers:
             cls._analyzers[name]['enabled'] = True
-            logger.debug(f"启用分析器: {name}")
+            logger.debug(f"启用自定义分析器: {name}")
     
     @classmethod
     def disable(cls, name: str) -> None:

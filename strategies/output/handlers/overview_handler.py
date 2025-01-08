@@ -37,7 +37,17 @@ class ConsoleHandler(ResultHandler):
     def _print_analyzer_results(self, analyzer_results: Dict[str, Any]) -> None:
         """打印分析器结果"""
         for name, result in analyzer_results.items():
-            if name in ['returns', 'sharpe', 'drawdown']:  # 只打印关心的分析器结果
+            if name == 'benchmark':
+                logger.info("=== 基准对比分析 ===")
+                logger.info(f"阿尔法: {result.get('alpha', 0):+.2f}")
+                logger.info(f"贝塔: {result.get('beta', 0):.2f}")
+                logger.info(f"相关系数: {result.get('correlation', 0):.2f}")
+                logger.info(f"信息比率: {result.get('information_ratio', 0):.2f}")
+                logger.info(f"跟踪误差: {result.get('tracking_error', 0):.2f}")
+                logger.info(f"超额收益: {result.get('excess_return', 0):+.2f}%")
+                logger.info(f"策略年化收益率: {result.get('strategy_annual_return', 0):+.2f}%")
+                logger.info(f"基准年化收益率: {result.get('benchmark_annual_return', 0):+.2f}%")
+            elif name in ['returns', 'sharpe', 'drawdown']:  # 只打印关心的分析器结果
                 logger.info(f"{name.upper()} 分析结果:")
                 for key, value in result.items():
                     logger.info(f"{key}: {value}") 

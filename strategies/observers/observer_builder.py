@@ -8,8 +8,6 @@ class ObserverBuilder:
     @classmethod
     def setup_observers(cls, cerebro: bt.Cerebro, config: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
         """设置观察者"""
-        # 重置观察者状态
-        ObserverRegistry.reset()
         
         # 如果提供了配置，更新观察者状态
         if config is not None:
@@ -26,3 +24,4 @@ class ObserverBuilder:
         # 返回当前配置
         return {name: ObserverRegistry.is_enabled(name) 
                 for name in ObserverRegistry._observers} 
+    
