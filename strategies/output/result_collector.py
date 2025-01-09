@@ -1,14 +1,82 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Type
 import backtrader as bt
 from utils.logger import Logger
 from utils.event_bus import EventBus
 from ..analyzers.analyzer_chain import AnalyzerChainBuilder
-from ..observers.base_observer import BaseObserver
 
 logger = Logger.get_logger(__name__)
 
 class ResultCollector:
     """回测结果收集器"""
+    
+    # 定义观察者数据收集映射
+    OBSERVER_COLLECTORS = {
+        bt.observers.Broker: lambda obs: {
+            'cash': list(obs.cash),
+            'value': list(obs.value)
+        },
+        bt.observers.BuySell: lambda obs: {
+            'buy': list(obs.buy),
+            'sell': list(obs.sell)
+        },
+        bt.observers.DrawDown: lambda obs: {
+            'drawdown': list(obs.drawdown),
+            'maxdrawdown': list(obs.maxdrawdown)
+        },
+        bt.observers.Value: lambda obs: {
+            'value': list(obs.value)
+        },
+        bt.observers.Trades: lambda obs: {
+            'pnlplus': list(obs.pnlplus),
+            'pnlminus': list(obs.pnlminus)
+        },
+        bt.observers.TimeReturn: lambda obs: {
+            'returns': list(obs.timereturn)
+        },
+        bt.observers.Benchmark: lambda obs: {
+            'benchmark': list(obs.benchmark),
+            'strategy': list(obs.strategy)
+        },
+        bt.observers.LogReturns: lambda obs: {
+            'returns': list(obs.returns)
+        }
+    }
+    
+    @classmethod
+    def _get_observer_name(cls, observer: bt.Observer) -> str:
+        """获取观察者名称"""
+        return getattr(observer, '_name', observer.__class__.__name__.lower())
+    
+    @classmethod
+    def _collect_observer_data(cls, strategy: bt.Strategy) -> Dict[str, Any]:
+        """收集观察者数据"""
+        observer_data = {}
+        try:
+            for observer in strategy.observers:
+                try:
+                    # 获取观察者名称
+                    observer_name = cls._get_observer_name(observer)
+                    
+                    # 处理自定义观察者
+                    if hasattr(observer, 'get_analysis'):
+                        observer_data[observer_name] = observer.get_analysis()
+                        continue
+                    
+                    # 处理内置观察者
+                    for observer_type, collector in cls.OBSERVER_COLLECTORS.items():
+                        if isinstance(observer, observer_type):
+                            observer_data[observer_name] = collector(observer)
+                            break
+                            
+                except Exception as e:
+                    logger.error(f"收集观察者 {observer.__class__.__name__} 数据失败: {str(e)}")
+                    continue
+                    
+            return observer_data
+            
+        except Exception as e:
+            logger.error(f"收集观察者数据失败: {str(e)}")
+            return {}
     
     @classmethod
     def collect_results(cls, strategy: bt.Strategy, cerebro: bt.Cerebro, 
@@ -44,7 +112,7 @@ class ResultCollector:
             }
             
             # 发布最终结果
-            logger.debug(f"发布最终结果: {final_results}")
+
             event_bus.publish('final_result', final_results)
             
             return final_results
@@ -91,25 +159,6 @@ class ResultCollector:
         except Exception as e:
             logger.error(f"收集分析器结果失败: {str(e)}")
             return {}
-    
-    @classmethod
-    def _collect_observer_data(cls, strategy: bt.Strategy) -> Dict[str, Any]:
-        """收集观察者数据"""
-        observer_data = {}
-        try:
-            # 遍历所有观察者
-            for observer in strategy.observers:
-                if isinstance(observer, BaseObserver):
-                    try:
-                        # 获取观察者名称
-                        observer_name = observer.__class__.__name__.lower()
-                        # 收集观察者数据
-                        observer_data[observer_name] = observer.get_analysis()
-                    except Exception as e:
-                        logger.error(f"收集观察者 {observer.__class__.__name__} 数据失败: {str(e)}")
-        except Exception as e:
-            logger.error(f"收集观察者数据失败: {str(e)}")
-        return observer_data
     
     @staticmethod
     def _collect_trade_stats(strategy: bt.Strategy) -> Dict[str, Any]:

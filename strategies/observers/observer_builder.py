@@ -8,7 +8,8 @@ class ObserverBuilder:
     @classmethod
     def setup_observers(cls, cerebro: bt.Cerebro, config: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
         """设置观察者"""
-        
+        # 添加内置观察者
+        cls._add_builtin_observers(cerebro)
         # 如果提供了配置，更新观察者状态
         if config is not None:
             for name, enabled in config.items():
@@ -25,3 +26,17 @@ class ObserverBuilder:
         return {name: ObserverRegistry.is_enabled(name) 
                 for name in ObserverRegistry._observers} 
     
+    
+    # 添加内置观察者
+    @classmethod
+    def _add_builtin_observers(cls, cerebro: bt.Cerebro) -> None:
+        """添加内置观察者"""
+        cerebro.addobserver(bt.observers.Broker)
+        cerebro.addobserver(bt.observers.Trades)
+        cerebro.addobserver(bt.observers.BuySell)
+        cerebro.addobserver(bt.observers.Value)
+        cerebro.addobserver(bt.observers.DrawDown)
+        cerebro.addobserver(bt.observers.TimeReturn)
+        cerebro.addobserver(bt.observers.Benchmark)
+
+
